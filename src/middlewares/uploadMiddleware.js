@@ -12,7 +12,7 @@ const storage = new CloudinaryStorage({
     return {
       folder,
       allowed_formats: ["jpg", "png", "jpeg"], // định dạng file được phép tải lên
-      public_id: `${userId}_${file.fieldname}`, // ví dụ: 68f3c128_avatar
+      public_id: `${userId}_${file.fieldname}`,
       overwrite: true, //  ghi đè ảnh cũ
     };
   },
