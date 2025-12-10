@@ -4,6 +4,7 @@ import morgan from "morgan";
 import userRoutes from "./routes/userRoute.js";
 import followRoutes from "./routes/followRoute.js";
 import postRoutes from "./routes/postRoute.js";
+import reactionRoutes from "./routes/reactionRoute.js";
 import dotenv from "dotenv";
 import connectDB from "./config/db.js";
 import cookieParser from "cookie-parser";
@@ -20,6 +21,7 @@ app.use(cookieParser());
 app.use("/api/users", userRoutes);
 app.use("/api/follows", followRoutes);
 app.use("/api/posts", postRoutes);
+app.use("/api/reactions", reactionRoutes);
 
 const PORT = process.env.PORT || 8080;
 

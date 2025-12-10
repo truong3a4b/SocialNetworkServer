@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
+import { v2 as cloudinary } from "cloudinary";
 
 const generateAccessToken = (userId) => {
   const token = jwt.sign({ id: userId }, process.env.ACCESS_TOKEN_SECRET, {
