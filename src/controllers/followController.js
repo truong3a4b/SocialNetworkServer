@@ -3,8 +3,10 @@ import User from "../models/User.js";
 
 //follow a user
 export const followUser = async (req, res) => {
+  const session = await mongoose.startSession();
   try {
     const { userIdToFollow } = req.body;
+    //validate input
     if (!userIdToFollow) {
       return res
         .status(400)
@@ -18,6 +20,9 @@ export const followUser = async (req, res) => {
       follower: followerId,
       following: userIdToFollow,
     });
+
+    session.startTransaction();
+
     await newFollow.save();
 
     //update follower and following counts
@@ -26,8 +31,14 @@ export const followUser = async (req, res) => {
       User.findByIdAndUpdate(userIdToFollow, { $inc: { followerCount: 1 } }),
     ]);
 
-    res.status(201).json({ message: "Successfully followed the user." });
+    await session.commitTransaction();
+    await session.endSession();
+
+    return res.status(201).json({ message: "Successfully followed the user." });
   } catch (error) {
+    await session.abortTransaction();
+    await session.endSession();
+
     if (error.code === 11000) {
       return res
         .status(400)
@@ -39,6 +50,7 @@ export const followUser = async (req, res) => {
 
 //unfollow a user
 export const unfollowUser = async (req, res) => {
+  const session = await mongoose.startSession();
   try {
     const { userIdToUnfollow } = req.body;
     if (!userIdToUnfollow) {
@@ -47,11 +59,17 @@ export const unfollowUser = async (req, res) => {
         .json({ message: "User ID to unfollow is required." });
     }
     const followerId = req.userId;
+
+    session.startTransaction();
+
     const deletedFollow = await Follow.findOneAndDelete({
       follower: followerId,
       following: userIdToUnfollow,
     });
     if (!deletedFollow) {
+      await session.abortTransaction();
+      await session.endSession();
+
       return res
         .status(404)
         .json({ message: "You are not following this user." });
@@ -63,9 +81,18 @@ export const unfollowUser = async (req, res) => {
       User.findByIdAndUpdate(userIdToUnfollow, { $inc: { followerCount: -1 } }),
     ]);
 
-    res.status(200).json({ message: "Successfully unfollowed the user." });
+    await session.commitTransaction();
+    await session.endSession();
+
+    return res
+      .status(200)
+      .json({ message: "Successfully unfollowed the user." });
   } catch (error) {
+    await session.abortTransaction();
+    await session.endSession();
+
     res.status(500).json({ message: "Internal server error." });
+    console.log(error);
   }
 };
 

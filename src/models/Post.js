@@ -36,6 +36,10 @@ const PostSchema = new mongoose.Schema(
       ref: "Post",
       default: null,
     },
+    totalReactions: {
+      type: Number,
+      default: 0,
+    },
     reactionCounts: {
       like: { type: Number, default: 0 },
       love: { type: Number, default: 0 },

@@ -1,6 +1,7 @@
 import express from "express";
 import {
   getPosts,
+  getProfilePosts,
   getPost,
   getCloudinarySignature,
   createPost,
@@ -12,7 +13,8 @@ import { verifyToken } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-router.get("/", verifyToken, getPosts);
+router.get("/feed", verifyToken, getPosts);
+router.get("/profile/:id", verifyToken, getProfilePosts);
 router.get("/:id", verifyToken, getPost);
 router.get("/signature", verifyToken, getCloudinarySignature);
 router.post("/", verifyToken, createPost);

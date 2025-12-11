@@ -8,10 +8,15 @@ const ReactionSchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
-    post: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Post",
+    targetType: {
+      type: String,
+      enum: ["Post", "Comment"],
       required: true,
+    },
+    targetId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      refPath: "targetType",
     },
     type: {
       type: String,
@@ -22,6 +27,6 @@ const ReactionSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-ReactionSchema.index({ user: 1, post: 1 }, { unique: true });
+ReactionSchema.index({ user: 1, targetId: 1 }, { unique: true });
 
 export default mongoose.model("Reaction", ReactionSchema);

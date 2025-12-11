@@ -8,8 +8,8 @@ import { verifyToken } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
-router.get("/:postId", verifyToken, getReactionsByPost);
+router.get("/:targetId", verifyToken, getReactionsByPost);
 router.post("/", verifyToken, createReaction);
-router.delete("/:postId", verifyToken, deleteReaction);
+router.delete("/:targetId", verifyToken, deleteReaction);
 
 export default router;

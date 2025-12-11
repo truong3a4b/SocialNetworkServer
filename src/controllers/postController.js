@@ -3,15 +3,16 @@ import Post from "../models/Post.js";
 import Follow from "../models/Follow.js";
 import HiddenPost from "../models/HiddenPost.js";
 import cloudinary from "../config/cloudinary.js";
+import Comment from "../models/Comment.js";
+import Reaction from "../models/Reaction.js";
 
-//get posts
+//get feed posts
 export const getPosts = async (req, res) => {
   try {
     const userId = req.userId;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 10;
     const skip = (page - 1) * limit;
-    const authorId = req.query.author;
 
     //get list of following ids and hidden post ids
     const [following, hiddenPosts] = await Promise.all([
@@ -23,14 +24,6 @@ export const getPosts = async (req, res) => {
     const hiddenPostIds = hiddenPosts.map((hp) => hp.post);
 
     const pipeline = [];
-    if (authorId) {
-      pipeline.push({
-        $match: {
-          author: new mongoose.Types.ObjectId(authorId),
-          _id: { $nin: hiddenPostIds },
-        },
-      });
-    }
 
     //fetch posts
     pipeline.push(
@@ -59,19 +52,25 @@ export const getPosts = async (req, res) => {
                 $match: {
                   $expr: {
                     $and: [
-                      { $eq: ["$post", "$$postId"] },
+                      { $eq: ["$targetId", "$$postId"] },
                       { $eq: ["$user", "$$userId"] },
                     ],
                   },
                 },
               },
             ],
-            as: "userReactions",
+            as: "userReaction",
           },
         },
         {
           $addFields: {
-            isLiked: { $gt: [{ $size: "$userReactions" }, 0] },
+            userReaction: {
+              $cond: [
+                { $gt: [{ $size: "$userReaction" }, 0] },
+                { $arrayElemAt: ["$userReaction.type", 0] },
+                null,
+              ],
+            },
           },
         },
 
@@ -112,6 +111,38 @@ export const getPosts = async (req, res) => {
         //calculate score for sorting
         {
           $addFields: {
+            engagementScore: {
+              $divide: [
+                {
+                  $add: [
+                    { $multiply: ["$totalReactions", 1] },
+                    { $multiply: ["$commentCount", 3] },
+                    { $multiply: ["$shareCount", 5] },
+                  ],
+                },
+                {
+                  $pow: [
+                    {
+                      $add: [
+                        2,
+                        {
+                          $divide: [
+                            { $subtract: [new Date(), "$createdAt"] },
+                            1000 * 60 * 60,
+                          ],
+                        },
+                      ],
+                    },
+                    1.5,
+                  ],
+                },
+              ],
+            },
+          },
+        },
+
+        {
+          $addFields: {
             score: {
               $add: [
                 {
@@ -120,7 +151,7 @@ export const getPosts = async (req, res) => {
                 {
                   $cond: [
                     {
-                      $gte: ["$reactionCounts.like", 100],
+                      $gte: ["$engagementScore", 100],
                     },
                     3,
                     0,
@@ -166,8 +197,8 @@ export const getPosts = async (req, res) => {
         //delete unnecessary fields
         {
           $project: {
-            userReactions: 0,
             score: 0,
+            engagementScore: 0,
           },
         },
       ]
@@ -178,6 +209,121 @@ export const getPosts = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
     console.error("Error in getPost:", error);
+  }
+};
+
+//get profile posts
+export const getProfilePosts = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const profileId = req.params.id;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
+    const hiddenPosts = await HiddenPost.find({ user: userId })
+      .select("post")
+      .lean();
+    const hiddenPostIds = hiddenPosts.map((hp) => hp.post);
+
+    //fetch posts
+    const posts = await Post.aggregate([
+      {
+        $match: {
+          author: new mongoose.Types.ObjectId(profileId),
+          _id: { $nin: hiddenPostIds },
+        },
+      },
+
+      //lookup reactions
+      {
+        $lookup: {
+          from: "reactions",
+          let: {
+            postId: "$_id",
+            userId: new mongoose.Types.ObjectId(userId),
+          },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ["$targetId", "$$postId"] },
+                    { $eq: ["$user", "$$userId"] },
+                  ],
+                },
+              },
+            },
+          ],
+          as: "userReaction",
+        },
+      },
+      {
+        $addFields: {
+          userReaction: {
+            $cond: [
+              { $gt: [{ $size: "$userReaction" }, 0] },
+              { $arrayElemAt: ["$userReaction.type", 0] },
+              null,
+            ],
+          },
+        },
+      },
+      //lookup author details
+      {
+        $lookup: {
+          from: "users",
+          localField: "author",
+          foreignField: "_id",
+          as: "author",
+          pipeline: [{ $project: { fullName: 1, avatar: 1 } }],
+        },
+      },
+      { $unwind: "$author" },
+      //if shared post, lookup original post details
+      {
+        $lookup: {
+          from: "posts",
+          localField: "sharedPost",
+          foreignField: "_id",
+          as: "sharedPost",
+          pipeline: [
+            {
+              $lookup: {
+                from: "users",
+                localField: "author",
+                foreignField: "_id",
+                as: "author",
+                pipeline: [{ $project: { fullName: 1, avatar: 1 } }],
+              },
+            },
+            {
+              $unwind: { path: "$author", preserveNullAndEmptyArrays: true },
+            },
+            {
+              $project: {
+                content: 1,
+                images: 1,
+                videos: 1,
+                author: 1,
+                createdAt: 1,
+                privacy: 1,
+              },
+            },
+          ],
+        },
+      },
+      { $unwind: { path: "$sharedPost", preserveNullAndEmptyArrays: true } },
+      { $sort: { createdAt: -1 } },
+
+      { $skip: skip },
+      { $limit: limit },
+      //delete unnecessary fields
+    ]);
+    res.status(200).json({ posts });
+  } catch (error) {
+    res.status(500).json({ message: "Internal server error" });
+    console.error("Error in getProfilePosts:", error);
   }
 };
 
@@ -290,6 +436,11 @@ export const deletePost = async (req, res) => {
     if (post.author.toString() !== userId) {
       return res.status(403).json({ message: "Unauthorized" });
     }
+
+    //delete associated comments and reactions
+    await Comment.deleteMany({ post: postId });
+    await Reaction.deleteMany({ targetId: postId, targetType: "Post" });
+
     await Post.findByIdAndDelete(postId);
     res.status(200).json({ message: "Post deleted successfully" });
   } catch (error) {

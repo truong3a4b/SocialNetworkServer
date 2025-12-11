@@ -5,6 +5,7 @@ import userRoutes from "./routes/userRoute.js";
 import followRoutes from "./routes/followRoute.js";
 import postRoutes from "./routes/postRoute.js";
 import reactionRoutes from "./routes/reactionRoute.js";
+import commentRoutes from "./routes/commentRoute.js";
 import dotenv from "dotenv";
 import connectDB from "./config/db.js";
 import cookieParser from "cookie-parser";
@@ -22,6 +23,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/follows", followRoutes);
 app.use("/api/posts", postRoutes);
 app.use("/api/reactions", reactionRoutes);
+app.use("/api/comments", commentRoutes);
 
 const PORT = process.env.PORT || 8080;
 
