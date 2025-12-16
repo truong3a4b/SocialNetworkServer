@@ -1,5 +1,6 @@
 import Follow from "../models/Follow.js";
 import User from "../models/User.js";
+import { mongoose } from "mongoose";
 
 //follow a user
 export const followUser = async (req, res) => {

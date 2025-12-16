@@ -1,6 +1,7 @@
 import Reaction from "../models/Reaction.js";
 import Post from "../models/Post.js";
 import Comment from "../models/Comment.js";
+import { mongoose } from "mongoose";
 
 // Create a new reaction
 export const createReaction = async (req, res) => {

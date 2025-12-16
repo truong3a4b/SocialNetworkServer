@@ -213,7 +213,7 @@ export const deleteComment = async (req, res) => {
     const userId = req.userId;
     const comment = await Comment.findOneAndUpdate(
       { _id: commentId, user: userId, isDeleted: false },
-      { isDeleted: true },
+      { isDeleted: true, content: "This comment has been deleted" },
       { new: true }
     );
     if (comment) {
