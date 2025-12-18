@@ -7,6 +7,7 @@ import { ERROR_CODES } from "../lib/errorCodes.js";
 import { generateAccessToken, generateRefreshToken } from "../lib/utils.js";
 import crypto from "crypto";
 import dotenv from "dotenv";
+import PendingUser from "../models/PendingUser.js";
 dotenv.config();
 
 //Sign up
@@ -46,14 +47,30 @@ export const signUp = async (req, res) => {
     const trimmedEmail = email.trim();
     //hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-    //create new user
-    const newUser = new User({
+    // Generate a 5-digit OTP valid for 5 minutes
+    const otp = Math.floor(10000 + Math.random() * 90000).toString();
+    const expiredAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    const newUser = new PendingUser({
       email: trimmedEmail,
       password: hashedPassword,
+      otp,
+      expiredAt,
     });
+
     await newUser.save();
+
+    // Send OTP via email
+    const to = newUser.email;
+    const html = `
+      <h3>Your OTP Code</h3>
+      <p>Your OTP code is: <strong>${otp}</strong></p>
+      <p>This code will expire in 5 minutes.</p>
+    `;
+    await BrevoProvider.sendEmail(to, "Verify your email", html);
+
     res.status(201).json({
-      message: "User registered successfully.",
+      message: "User registered successfully. Please verify your account",
       user: {
         id: newUser._id,
         email: newUser.email,
@@ -80,7 +97,7 @@ export const verifyOtp = async (req, res) => {
     }
 
     const trimmedEmail = email.trim();
-    const user = await User.findOne({ email: trimmedEmail });
+    const user = await PendingUser.findOne({ email: trimmedEmail });
     if (!user) {
       return res.status(404).json({
         error: ERROR_CODES.USER_NOT_FOUND,
@@ -88,47 +105,32 @@ export const verifyOtp = async (req, res) => {
       });
     }
 
-    if (user.isVerified) {
-      return res.status(400).json({
-        error: ERROR_CODES.BAD_REQUEST,
-        message: "Email is already verified",
-      });
-    }
-
-    const otpDoc = await Otp.findOne({
-      userId: user._id,
-      type: "VERIFY_ACCOUNT",
-    }).sort({ createdAt: -1 });
-
-    if (!otpDoc) {
-      return res.status(400).json({
-        error: ERROR_CODES.OTP_NOT_REQUESTED,
-        message: "No OTP request found for this user",
-      });
-    }
-
-    if (otpDoc.expiredAt <= new Date()) {
-      await Otp.deleteMany({ userId: user._id, type: "VERIFY_ACCOUNT" });
+    if (user.expiredAt <= new Date()) {
+      await PendingUser.findByIdAndDelete(user._id);
       return res.status(400).json({
         error: ERROR_CODES.OTP_EXPIRED,
         message: "OTP has expired. Please request a new one",
       });
     }
 
-    if (otpDoc.otp !== String(otp).trim()) {
+    if (user.otp !== String(otp).trim()) {
       return res.status(400).json({
         error: ERROR_CODES.INVALID_OTP,
         message: "Invalid OTP",
       });
     }
 
-    user.isVerified = true;
-    await user.save();
-    await Otp.deleteMany({ userId: user._id, type: "VERIFY_ACCOUNT" });
+    const newUser = new User({
+      email: user.email,
+      password: user.password,
+      isVerified: true,
+    });
+
+    await newUser.save();
+    await PendingUser.findByIdAndDelete(user._id);
 
     return res.status(200).json({
       message: "Email verified successfully",
-      user: { id: user._id, email: user.email },
     });
   } catch (err) {
     res.status(500).json({
@@ -149,31 +151,21 @@ export const sendOtpVerification = async (req, res) => {
         message: "Email is required",
       });
     }
-    const user = await User.findOne({ email: email.trim() });
+    const user = await PendingUser.findOne({ email: email.trim() });
     if (!user) {
       return res.status(400).json({
         error: ERROR_CODES.USER_NOT_FOUND,
         message: "Email not found",
       });
     }
-    if (user.isVerified) {
-      return res.status(400).json({
-        error: ERROR_CODES.BAD_REQUEST,
-        message: "Email is already verified",
-      });
-    }
+
     // Generate a 5-digit OTP valid for 5 minutes
     const otp = Math.floor(10000 + Math.random() * 90000).toString();
     const expiredAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    // Upsert OTP for this user and type
-    await Otp.deleteMany({ userId: user._id, type: "VERIFY_ACCOUNT" });
-    await Otp.create({
-      userId: user._id,
-      otp,
-      type: "VERIFY_ACCOUNT",
-      expiredAt,
-    });
+    user.otp = otp;
+    user.expiredAt = expiredAt;
+    await user.save();
 
     // Send OTP via email
     const to = user.email;
