@@ -16,8 +16,6 @@ const userSchema = new mongoose.Schema(
     sex: { type: String, enum: ["Male", "Female", "Other"] },
     birthday: { type: Date },
     profileCompleted: { type: Boolean, default: false },
-    otp: { type: String },
-    otpExpires: { type: Date },
     isVerified: { type: Boolean, default: false },
     role: { type: String, enum: ["User", "Admin"], default: "User" },
     followerCount: { type: Number, default: 0 },

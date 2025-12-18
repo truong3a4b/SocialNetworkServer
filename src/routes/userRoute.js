@@ -5,7 +5,7 @@ import {
   verifyOtp,
   login,
   logout,
-  resendOtp,
+  sendOtpVerification,
   refreshToken,
   getUserProfile,
   updateUserProfile,
@@ -18,7 +18,7 @@ router.post("/signup", signUp);
 router.post("/verify-otp", verifyOtp);
 router.post("/login", login);
 router.post("/logout", verifyToken, logout);
-router.post("/resend-otp", resendOtp);
+router.post("/send-otp", sendOtpVerification);
 router.post("/refresh-token", refreshToken);
 router.get("/profile/:id", verifyToken, getUserProfile);
 router.put(

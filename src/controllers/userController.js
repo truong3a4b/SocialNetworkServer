@@ -1,4 +1,5 @@
 import User from "../models/User.js";
+import Otp from "../models/Otp.js";
 import Session from "../models/Session.js";
 import bcrypt from "bcryptjs";
 import BrevoProvider from "../config/brevo.js";
@@ -45,28 +46,18 @@ export const signUp = async (req, res) => {
     const trimmedEmail = email.trim();
     //hash password
     const hashedPassword = await bcrypt.hash(password, 10);
-
-    //generate otp 5 digits in 1 minute
-    const otp = Math.floor(10000 + Math.random() * 90000).toString();
-    const otpExpires = new Date(Date.now() + 1 * 60 * 1000); // 1 minute from now
     //create new user
     const newUser = new User({
       email: trimmedEmail,
       password: hashedPassword,
-      otp,
-      otpExpires,
     });
     await newUser.save();
-    //send otp to email (mock)
-    const to = trimmedEmail;
-    const html = `
-      <h3>Your OTP Code</h3>
-      <p>Your OTP code is: <strong>${otp}</strong></p>
-      <p>This code will expire in 1 minute.</p>
-    `;
-    await BrevoProvider.sendEmail(to, "Verify your email", html);
     res.status(201).json({
-      message: "User registered successfully. Please verify your email.",
+      message: "User registered successfully.",
+      user: {
+        id: newUser._id,
+        email: newUser.email,
+      },
     });
   } catch (err) {
     res.status(500).json({
@@ -87,35 +78,58 @@ export const verifyOtp = async (req, res) => {
         message: "Email and OTP are required",
       });
     }
-    const user = await User.findOne({ email });
+
+    const trimmedEmail = email.trim();
+    const user = await User.findOne({ email: trimmedEmail });
     if (!user) {
-      return res.status(400).json({
+      return res.status(404).json({
         error: ERROR_CODES.USER_NOT_FOUND,
-        message: "Invalid email or OTP",
+        message: "User not found",
       });
     }
+
     if (user.isVerified) {
       return res.status(400).json({
-        error: ERROR_CODES.EMAIL_NOT_VERIFIED,
+        error: ERROR_CODES.BAD_REQUEST,
         message: "Email is already verified",
       });
     }
-    if (user.otp !== otp) {
+
+    const otpDoc = await Otp.findOne({
+      userId: user._id,
+      type: "VERIFY_ACCOUNT",
+    }).sort({ createdAt: -1 });
+
+    if (!otpDoc) {
       return res.status(400).json({
-        error: ERROR_CODES.INVALID_OTP,
-        message: "Invalid email or OTP",
+        error: ERROR_CODES.OTP_NOT_REQUESTED,
+        message: "No OTP request found for this user",
       });
     }
-    if (user.otpExpires < new Date()) {
-      return res
-        .status(400)
-        .json({ error: ERROR_CODES.OTP_EXPIRED, message: "OTP has expired" });
+
+    if (otpDoc.expiredAt <= new Date()) {
+      await Otp.deleteMany({ userId: user._id, type: "VERIFY_ACCOUNT" });
+      return res.status(400).json({
+        error: ERROR_CODES.OTP_EXPIRED,
+        message: "OTP has expired. Please request a new one",
+      });
     }
+
+    if (otpDoc.otp !== String(otp).trim()) {
+      return res.status(400).json({
+        error: ERROR_CODES.INVALID_OTP,
+        message: "Invalid OTP",
+      });
+    }
+
     user.isVerified = true;
-    user.otp = null;
-    user.otpExpires = null;
     await user.save();
-    res.status(200).json({ message: "Email verified successfully" });
+    await Otp.deleteMany({ userId: user._id, type: "VERIFY_ACCOUNT" });
+
+    return res.status(200).json({
+      message: "Email verified successfully",
+      user: { id: user._id, email: user.email },
+    });
   } catch (err) {
     res.status(500).json({
       error: ERROR_CODES.SERVER_ERROR,
@@ -126,7 +140,7 @@ export const verifyOtp = async (req, res) => {
 };
 
 //Resend OTP
-export const resendOtp = async (req, res) => {
+export const sendOtpVerification = async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) {
@@ -135,7 +149,7 @@ export const resendOtp = async (req, res) => {
         message: "Email is required",
       });
     }
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: email.trim() });
     if (!user) {
       return res.status(400).json({
         error: ERROR_CODES.USER_NOT_FOUND,
@@ -148,18 +162,25 @@ export const resendOtp = async (req, res) => {
         message: "Email is already verified",
       });
     }
-    //generate new otp 5 digits in 1 minute
+    // Generate a 5-digit OTP valid for 5 minutes
     const otp = Math.floor(10000 + Math.random() * 90000).toString();
-    const otpExpires = new Date(Date.now() + 1 * 60 * 1000); // 1 minute from now
-    user.otp = otp;
-    user.otpExpires = otpExpires;
-    await user.save();
-    //send otp to email (mock)
+    const expiredAt = new Date(Date.now() + 5 * 60 * 1000);
+
+    // Upsert OTP for this user and type
+    await Otp.deleteMany({ userId: user._id, type: "VERIFY_ACCOUNT" });
+    await Otp.create({
+      userId: user._id,
+      otp,
+      type: "VERIFY_ACCOUNT",
+      expiredAt,
+    });
+
+    // Send OTP via email
     const to = user.email;
     const html = `
       <h3>Your OTP Code</h3>
       <p>Your OTP code is: <strong>${otp}</strong></p>
-      <p>This code will expire in 1 minute.</p>
+      <p>This code will expire in 5 minutes.</p>
     `;
     await BrevoProvider.sendEmail(to, "Verify your email", html);
     res.status(200).json({ message: "OTP resent successfully" });
