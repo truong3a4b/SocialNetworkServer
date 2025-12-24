@@ -132,12 +132,12 @@ export const deleteReaction = async (req, res) => {
       user: userId,
     });
     if (reaction) {
-      if (reaction.reactionType === "Post") {
+      if (reaction.targetType === "Post") {
         // Decrement reaction count in Post model
         await Post.findByIdAndUpdate(targetId, {
           $inc: { [`reactionCounts.${reaction.type}`]: -1, totalReactions: -1 },
         });
-      } else if (reaction.reactionType === "Comment") {
+      } else if (reaction.targetType === "Comment") {
         // Handle comment reaction count decrement
         await Comment.findByIdAndUpdate(targetId, {
           $inc: { [`reactionCounts.${reaction.type}`]: -1, totalReactions: -1 },

@@ -1,5 +1,4 @@
 import User from "../models/User.js";
-import Otp from "../models/Otp.js";
 import Session from "../models/Session.js";
 import bcrypt from "bcryptjs";
 import BrevoProvider from "../config/brevo.js";
@@ -8,6 +7,7 @@ import { generateAccessToken, generateRefreshToken } from "../lib/utils.js";
 import crypto from "crypto";
 import dotenv from "dotenv";
 import PendingUser from "../models/PendingUser.js";
+
 dotenv.config();
 
 //Sign up
@@ -28,6 +28,7 @@ export const signUp = async (req, res) => {
         message: "Email has been registered",
       });
     }
+
     //check email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
@@ -51,14 +52,23 @@ export const signUp = async (req, res) => {
     const otp = Math.floor(10000 + Math.random() * 90000).toString();
     const expiredAt = new Date(Date.now() + 5 * 60 * 1000);
 
-    const newUser = new PendingUser({
-      email: trimmedEmail,
-      password: hashedPassword,
-      otp,
-      expiredAt,
-    });
+    // Check if email is already in pending users
+    const newUser = await PendingUser.findOne({ email });
+    if (newUser) {
+      newUser.password = hashedPassword;
+      newUser.otp = otp;
+      newUser.expiredAt = expiredAt;
+      await newUser.save();
+    } else {
+      const newUser = new PendingUser({
+        email: trimmedEmail,
+        password: hashedPassword,
+        otp,
+        expiredAt,
+      });
 
-    await newUser.save();
+      await newUser.save();
+    }
 
     // Send OTP via email
     const to = newUser.email;
