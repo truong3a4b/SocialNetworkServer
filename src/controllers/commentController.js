@@ -45,7 +45,9 @@ export const createComment = async (req, res) => {
 
     await session.commitTransaction();
     await session.endSession();
-    res.status(201).json({ ...newComment, isOwner: true, userReaction: null });
+    res
+      .status(201)
+      .json({ ...newComment.toObject(), isOwner: true, userReaction: null });
   } catch (error) {
     // Abort transaction on error
     await session.abortTransaction();
