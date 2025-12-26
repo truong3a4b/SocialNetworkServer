@@ -10,6 +10,7 @@ import {
   getUserProfile,
   updateUserProfile,
   searchUsers,
+  getMe,
 } from "../controllers/userController.js";
 import { verifyToken } from "../middlewares/authMiddleware.js";
 
@@ -28,5 +29,6 @@ router.put(
   updateUserProfile
 );
 router.get("/search", verifyToken, searchUsers);
+router.get("/me", verifyToken, getMe);
 
 export default router;

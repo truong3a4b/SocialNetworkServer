@@ -12,14 +12,15 @@ import {
 import { verifyToken } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
+router.use(verifyToken);
 
-router.get("/feed", verifyToken, getPosts);
-router.get("/profile/:id", verifyToken, getProfilePosts);
-router.get("/:id", verifyToken, getPost);
-router.get("/signature", verifyToken, getCloudinarySignature);
-router.post("/", verifyToken, createPost);
-router.put("/:id", verifyToken, editPost);
-router.delete("/:id", verifyToken, deletePost);
-router.post("/share/:id", verifyToken, sharePost);
+router.get("/feed", getPosts);
+router.get("/profile/:id", getProfilePosts);
+router.get("/:id", getPost);
+router.get("/upload/signature", getCloudinarySignature);
+router.post("/", createPost);
+router.put("/:id", editPost);
+router.delete("/:id", deletePost);
+router.post("/share/:id", sharePost);
 
 export default router;

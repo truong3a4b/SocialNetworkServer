@@ -349,11 +349,12 @@ export const getPost = async (req, res) => {
 export const getCloudinarySignature = (req, res) => {
   try {
     const timestamp = Math.floor(Date.now() / 1000);
-
+    const userId = req.userId;
+    const publicId = `user_${userId}_${Date.now()}`;
     const paramToSign = {
       timestamp: timestamp,
       folder: "social_media_app",
-      resource_type: "auto",
+      public_id: publicId,
     };
     const signature = cloudinary.utils.api_sign_request(
       paramToSign,
@@ -365,6 +366,8 @@ export const getCloudinarySignature = (req, res) => {
       apiKey: process.env.CLOUDINARY_API_KEY,
       cloudinaryName: process.env.CLOUDINARY_CLOUD_NAME,
       folder: "social_media_app",
+      publicId: publicId,
+      resourceType: "auto",
     });
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
@@ -392,7 +395,8 @@ export const createPost = async (req, res) => {
     });
 
     await newPost.save();
-    res.status(201).json({ post: newPost });
+    await newPost.populate("author", "fullName avatar");
+    res.status(201).json(newPost);
   } catch (error) {
     res.status(500).json({ message: "Internal server error" });
     console.error("Error in createPost:", error);

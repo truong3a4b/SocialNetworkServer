@@ -7,6 +7,7 @@ import { generateAccessToken, generateRefreshToken } from "../lib/utils.js";
 import crypto from "crypto";
 import dotenv from "dotenv";
 import PendingUser from "../models/PendingUser.js";
+import Follow from "../models/Follow.js";
 
 dotenv.config();
 
@@ -251,7 +252,7 @@ export const login = async (req, res) => {
     res.status(200).json({
       message: "Login successful",
       user: {
-        id: user._id,
+        _id: user._id,
         email: user.email,
         profileCompleted: user.profileCompleted,
       },
@@ -327,9 +328,7 @@ export const getUserProfile = async (req, res) => {
   try {
     const userId = req.userId;
     const profileUserId = req.params.id;
-    const user = await User.findById(profileUserId).select(
-      "-password -otp -otpExpires -__v"
-    );
+    const user = await User.findById(profileUserId).select("-password -__v");
 
     if (!user) {
       return res.status(404).json({
@@ -338,15 +337,22 @@ export const getUserProfile = async (req, res) => {
       });
     }
 
+    let isFollowed = false;
     // Handle privacy settings
     if (userId.toString() !== profileUserId.toString()) {
+      const follow = await Follow.findOne({
+        follower: userId,
+        following: profileUserId,
+      });
+      isFollowed = !!follow;
+
       if (!user.privacy.showEmail) user.email = undefined;
       if (!user.privacy.showPhone) user.numberPhone = undefined;
       if (!user.privacy.showBirthday) user.birthday = undefined;
       if (!user.privacy.showBio) user.bio = undefined;
       if (!user.privacy.showGenre) user.genre = undefined;
     }
-    res.status(200).json({ user });
+    res.status(200).json({ ...user.toObject(), isFollowed });
   } catch (err) {
     res.status(500).json({
       error: ERROR_CODES.SERVER_ERROR,
@@ -361,9 +367,7 @@ export const updateUserProfile = async (req, res) => {
   try {
     const userId = req.userId;
     const { fullName, numberPhone, bio, sex, birthday, privacy } = req.body;
-    const user = await User.findById(userId).select(
-      "-password -otp -otpExpires -__v"
-    );
+    const user = await User.findById(userId).select("-password -__v");
     if (!user) {
       return res.status(404).json({
         error: ERROR_CODES.USER_NOT_FOUND,
@@ -422,6 +426,27 @@ export const searchUsers = async (req, res) => {
       .skip((pageNum - 1) * limitNum)
       .limit(limitNum);
     res.status(200).json({ total, page: pageNum, limit: limitNum, users });
+  } catch (err) {
+    res.status(500).json({
+      error: ERROR_CODES.SERVER_ERROR,
+      message: "Internal server error",
+    });
+    console.error(err);
+  }
+};
+
+//get me
+export const getMe = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const user = await User.findById(userId).select("-password  -__v");
+    if (!user) {
+      return res.status(404).json({
+        error: ERROR_CODES.USER_NOT_FOUND,
+        message: "User not found",
+      });
+    }
+    res.status(200).json({ user });
   } catch (err) {
     res.status(500).json({
       error: ERROR_CODES.SERVER_ERROR,

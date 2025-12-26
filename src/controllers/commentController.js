@@ -1,5 +1,6 @@
 import { mongoose } from "mongoose";
 import Comment from "../models/Comment.js";
+import Post from "../models/Post.js";
 
 // Create a new comment
 export const createComment = async (req, res) => {
@@ -36,10 +37,15 @@ export const createComment = async (req, res) => {
       user: req.userId,
       parentComment,
     });
-    const savedComment = await newComment.save();
+
+    await newComment.save();
+    await newComment.populate("user", "fullName avatar");
+    //increment comment count in Post model
+    await Post.findByIdAndUpdate(postId, { $inc: { commentCount: 1 } });
+
     await session.commitTransaction();
     await session.endSession();
-    res.status(201).json(savedComment);
+    res.status(201).json({ ...newComment, isOwner: true, userReaction: null });
   } catch (error) {
     // Abort transaction on error
     await session.abortTransaction();
@@ -71,8 +77,8 @@ export const getCommentsByPost = async (req, res) => {
           isOwner: {
             $cond: [
               { $eq: ["$user", new mongoose.Types.ObjectId(userId)] },
-              1,
-              0,
+              true,
+              false,
             ],
           },
         },
@@ -130,7 +136,7 @@ export const getCommentsByPost = async (req, res) => {
       },
     ]);
 
-    res.status(200).json(comments);
+    res.status(200).json({ comments });
   } catch (error) {
     res.status(500).json({ message: "Internal Server Error", error });
     console.error("Error fetching comments:", error);
@@ -163,6 +169,18 @@ export const getRepliesByComment = async (req, res) => {
         },
       },
       { $unwind: "$user" },
+      //mark owner comments
+      {
+        $addFields: {
+          isOwner: {
+            $cond: [
+              { $eq: ["$user", new mongoose.Types.ObjectId(userId)] },
+              true,
+              false,
+            ],
+          },
+        },
+      },
       //is reacted by current user
       {
         $lookup: {
