@@ -102,19 +102,64 @@ export const getFollowers = async (req, res) => {
   try {
     const profileUserId = req.params.userId;
     const userId = req.userId;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
     // Check privacy settings
     const profileUser = await User.findById(profileUserId);
-    if (profileUserId !== userId && !profileUser.privacy.showFollowers) {
+    if (!profileUser) {
+      return res.status(404).json({ message: "User not found." });
+    }
+    if (
+      profileUserId.toString() !== userId.toString() &&
+      !profileUser.privacy.showFollowers
+    ) {
       return res
         .status(403)
         .json({ message: "You are not allowed to view followers." });
     }
-    const followers = await Follow.find({ following: profileUserId }).populate(
-      "follower",
-      "fullName avatar"
-    );
-    res.status(200).json(followers);
+    const total = await Follow.countDocuments({ following: profileUserId });
+
+    const followers = await Follow.find({ following: profileUserId })
+      .populate("follower", "fullName avatar")
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const followerIds = followers
+      .map((follow) => follow.follower?._id?.toString())
+      .filter(Boolean);
+
+    let followedSet = new Set();
+    if (followerIds.length) {
+      const followedRecords = await Follow.find({
+        follower: userId,
+        following: { $in: followerIds },
+      })
+        .select("following")
+        .lean();
+      followedSet = new Set(
+        followedRecords.map((record) => record.following.toString())
+      );
+    }
+
+    const followersWithFlag = followers.map((follow) => ({
+      ...follow,
+      follower: follow.follower
+        ? {
+            ...follow.follower,
+            isFollowed: followedSet.has(follow.follower?._id?.toString()),
+          }
+        : follow.follower,
+    }));
+
+    res.status(200).json({
+      total,
+      page,
+      limit,
+      followers: followersWithFlag,
+    });
   } catch (error) {
     res.status(500).json({ message: "Internal server error." });
     console.log(error);
@@ -126,19 +171,97 @@ export const getFollowing = async (req, res) => {
   try {
     const profileUserId = req.params.userId;
     const userId = req.userId;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
     // Check privacy settings
     const profileUser = await User.findById(profileUserId);
-    if (profileUserId !== userId && !profileUser.privacy.showFollowing) {
+    if (!profileUser) {
+      return res.status(404).json({ message: "User not found." });
+    }
+    if (
+      profileUserId.toString() !== userId.toString() &&
+      !profileUser.privacy.showFollowing
+    ) {
       return res
         .status(403)
         .json({ message: "You are not allowed to view following." });
     }
-    const following = await Follow.find({ follower: profileUserId }).populate(
-      "following",
-      "fullName avatar"
-    );
-    res.status(200).json(following);
+    const total = await Follow.countDocuments({ follower: profileUserId });
+
+    const following = await Follow.find({ follower: profileUserId })
+      .populate("following", "fullName avatar")
+      .skip(skip)
+      .limit(limit)
+      .lean();
+
+    const followingIds = following
+      .map((follow) => follow.following?._id?.toString())
+      .filter(Boolean);
+
+    let followedSet = new Set();
+    if (followingIds.length) {
+      const followedRecords = await Follow.find({
+        follower: userId,
+        following: { $in: followingIds },
+      })
+        .select("following")
+        .lean();
+      followedSet = new Set(
+        followedRecords.map((record) => record.following.toString())
+      );
+    }
+
+    const followingWithFlag = following.map((follow) => ({
+      ...follow,
+      following: follow.following
+        ? {
+            ...follow.following,
+            isFollowed: followedSet.has(follow.following?._id?.toString()),
+          }
+        : follow.following,
+    }));
+
+    res.status(200).json({
+      total,
+      page,
+      limit,
+      following: followingWithFlag,
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Internal server error." });
+    console.log(error);
+  }
+};
+
+//get follow suggestions for current user
+export const getFollowSuggestions = async (req, res) => {
+  try {
+    const userId = req.userId;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const followedRecords = await Follow.find({ follower: userId })
+      .select("following")
+      .lean();
+
+    const excludedIds = followedRecords
+      .map((record) => record.following?.toString())
+      .filter(Boolean);
+    excludedIds.push(userId.toString());
+
+    const suggestions = await User.find({ _id: { $nin: excludedIds } })
+      .sort({ followerCount: -1 })
+      .limit(limit)
+      .select("fullName avatar followerCount")
+      .lean();
+
+    const suggestionsWithFlag = suggestions.map((user) => ({
+      ...user,
+      isFollowed: false,
+    }));
+
+    res.status(200).json({ suggestions: suggestionsWithFlag, limit });
   } catch (error) {
     res.status(500).json({ message: "Internal server error." });
     console.log(error);

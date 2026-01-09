@@ -47,6 +47,7 @@ export const signUp = async (req, res) => {
     }
     //trim email
     const trimmedEmail = email.trim();
+    console.log("email:", email);
     //hash password
     const hashedPassword = await bcrypt.hash(password, 10);
     // Generate a 5-digit OTP valid for 5 minutes
@@ -54,14 +55,14 @@ export const signUp = async (req, res) => {
     const expiredAt = new Date(Date.now() + 5 * 60 * 1000);
 
     // Check if email is already in pending users
-    const newUser = await PendingUser.findOne({ email });
+    let newUser = await PendingUser.findOne({ email });
     if (newUser) {
       newUser.password = hashedPassword;
       newUser.otp = otp;
       newUser.expiredAt = expiredAt;
       await newUser.save();
     } else {
-      const newUser = new PendingUser({
+      newUser = new PendingUser({
         email: trimmedEmail,
         password: hashedPassword,
         otp,
@@ -83,7 +84,7 @@ export const signUp = async (req, res) => {
     res.status(201).json({
       message: "User registered successfully. Please verify your account",
       user: {
-        id: newUser._id,
+        _id: newUser._id,
         email: newUser.email,
       },
     });
@@ -387,7 +388,17 @@ export const updateUserProfile = async (req, res) => {
     if (numberPhone !== undefined) user.numberPhone = numberPhone.trim();
     if (bio !== undefined) user.bio = bio.trim();
     if (sex !== undefined) user.sex = sex;
-    if (birthday !== undefined) user.birthday = birthday;
+    if (birthday !== undefined) {
+      //validate birthday is date
+      const birthDate = new Date(birthday);
+      if (isNaN(birthDate.getTime())) {
+        return res.status(400).json({
+          error: ERROR_CODES.INVALID_DATA,
+          message: "Invalid birthday format",
+        });
+      }
+      user.birthday = birthDate;
+    }
     if (privacy !== undefined) user.privacy = privacy;
 
     const avatar = req.files?.avatar ? req.files.avatar[0].path : null;
